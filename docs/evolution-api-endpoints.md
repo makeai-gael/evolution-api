@@ -355,10 +355,10 @@ Request body fields:
 
 - `number: string`
 - `thumbnailUrl?: string`
-- `title: string`
+- `title: string` - required and cannot be empty
 - `description?: string`
 - `footer?: string`
-- `buttons: Button[]`
+- `buttons: Button[]` - required, minimum 1 item
 
 Each button includes:
 
@@ -372,6 +372,37 @@ Each button includes:
 - `name?: string`
 - `keyType?: "phone" | "email" | "cpf" | "cnpj" | "random"`
 - `key?: string`
+
+Conditional required fields by button type:
+
+- `reply` requires `displayText` and `id`
+- `copy` requires `displayText` and `copyCode`
+- `url` requires `displayText` and `url`
+- `call` requires `displayText` and `phoneNumber`
+- `pix` requires `currency`, `name`, `keyType`, and `key`
+
+Baileys runtime constraints:
+
+- `reply` buttons: maximum 3
+- `reply` buttons cannot be mixed with other button types
+- `pix` buttons: maximum 1
+- `pix` buttons cannot be mixed with other button types
+
+Acceptable reply-button payload example:
+
+```json
+{
+  "number": "5511999999999",
+  "title": "Choose an option",
+  "description": "Quick actions",
+  "footer": "Footer text",
+  "buttons": [
+    { "type": "reply", "displayText": "Yes", "id": "opt_yes" },
+    { "type": "reply", "displayText": "No", "id": "opt_no" },
+    { "type": "reply", "displayText": "Talk to an agent", "id": "opt_agent" }
+  ]
+}
+```
 
 ### Message Route Table
 

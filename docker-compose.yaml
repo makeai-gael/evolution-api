@@ -3,7 +3,10 @@ version: "3.8"
 services:
   api:
     container_name: evolution_api
-    image: evoapicloud/evolution-api:latest
+    image: evolution/api:local
+    build:
+      context: .
+      dockerfile: Dockerfile
     restart: always
     depends_on:
       - redis

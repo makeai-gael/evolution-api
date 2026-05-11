@@ -23,6 +23,9 @@ const getTypeMessage = (msg: any) => {
       msg?.message?.viewOnceMessageV2?.message?.audioMessage?.url,
     listResponseMessage: msg?.message?.listResponseMessage?.title || msg?.listResponseMessage?.title,
     responseRowId: msg?.message?.listResponseMessage?.singleSelectReply?.selectedRowId,
+    nativeFlowResponseMessage:
+      msg?.message?.interactiveResponseMessage?.nativeFlowResponseMessage?.paramsJson ||
+      msg?.message?.viewOnceMessageV2?.message?.interactiveResponseMessage?.nativeFlowResponseMessage?.paramsJson,
     templateButtonReplyMessage:
       msg?.message?.templateButtonReplyMessage?.selectedId || msg?.message?.buttonsResponseMessage?.selectedButtonId,
     // Medias
@@ -63,6 +66,15 @@ const getMessageContent = (types: any) => {
   const typeKey = Object.keys(types).find((key) => key !== 'externalAdReplyBody' && types[key] !== undefined);
 
   let result = typeKey ? types[typeKey] : undefined;
+
+  if (typeKey === 'nativeFlowResponseMessage' && typeof result === 'string') {
+    try {
+      const parsed = JSON.parse(result);
+      result = parsed?.id || parsed?.title || parsed?.value || result;
+    } catch {
+      // Keep original string when paramsJson is not valid JSON.
+    }
+  }
 
   if (types.externalAdReplyBody) {
     result = result ? `${result}\n${types.externalAdReplyBody}` : types.externalAdReplyBody;

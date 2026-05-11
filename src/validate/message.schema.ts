@@ -394,7 +394,7 @@ export const listMessageSchema: JSONSchema7 = {
       },
     },
   },
-  required: ['number', 'title', 'footerText', 'buttonText', 'sections'],
+  required: ['number', 'title', 'buttonText', 'sections'],
 };
 
 export const buttonsMessageSchema: JSONSchema7 = {
@@ -403,11 +403,16 @@ export const buttonsMessageSchema: JSONSchema7 = {
   properties: {
     number: { ...numberDefinition },
     thumbnailUrl: { type: 'string' },
-    title: { type: 'string' },
+    title: {
+      type: 'string',
+      minLength: 1,
+      description: 'The "title" cannot be empty',
+    },
     description: { type: 'string' },
     footer: { type: 'string' },
     buttons: {
       type: 'array',
+      minItems: 1,
       items: {
         type: 'object',
         properties: {
@@ -418,6 +423,7 @@ export const buttonsMessageSchema: JSONSchema7 = {
           displayText: { type: 'string' },
           id: { type: 'string' },
           url: { type: 'string' },
+          copyCode: { type: 'string' },
           phoneNumber: { type: 'string' },
           currency: { type: 'string' },
           name: { type: 'string' },
@@ -425,7 +431,58 @@ export const buttonsMessageSchema: JSONSchema7 = {
           key: { type: 'string' },
         },
         required: ['type'],
-        ...isNotEmpty('id', 'url', 'phoneNumber'),
+        allOf: [
+          {
+            if: {
+              properties: { type: { const: 'reply' } },
+              required: ['type'],
+            },
+            then: {
+              required: ['displayText', 'id'],
+              ...isNotEmpty('displayText', 'id'),
+            },
+          },
+          {
+            if: {
+              properties: { type: { const: 'copy' } },
+              required: ['type'],
+            },
+            then: {
+              required: ['displayText', 'copyCode'],
+              ...isNotEmpty('displayText', 'copyCode'),
+            },
+          },
+          {
+            if: {
+              properties: { type: { const: 'url' } },
+              required: ['type'],
+            },
+            then: {
+              required: ['displayText', 'url'],
+              ...isNotEmpty('displayText', 'url'),
+            },
+          },
+          {
+            if: {
+              properties: { type: { const: 'call' } },
+              required: ['type'],
+            },
+            then: {
+              required: ['displayText', 'phoneNumber'],
+              ...isNotEmpty('displayText', 'phoneNumber'),
+            },
+          },
+          {
+            if: {
+              properties: { type: { const: 'pix' } },
+              required: ['type'],
+            },
+            then: {
+              required: ['currency', 'name', 'keyType', 'key'],
+              ...isNotEmpty('currency', 'name', 'key'),
+            },
+          },
+        ],
       },
     },
     delay: {
@@ -445,5 +502,5 @@ export const buttonsMessageSchema: JSONSchema7 = {
       },
     },
   },
-  required: ['number'],
+  required: ['number', 'title', 'buttons'],
 };

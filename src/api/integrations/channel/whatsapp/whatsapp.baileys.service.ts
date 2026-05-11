@@ -2155,21 +2155,49 @@ export class BaileysStartupService extends ChannelStartupService {
     // NOTE: NÃO DEVEMOS GERAR O messageId AQUI, SOMENTE SE VIER INFORMADO POR PARAMETRO. A GERAÇÃO ANTERIOR IMPEDE O WZAP DE IDENTIFICAR A SOURCE.
     if (messageId) option.messageId = messageId;
 
-    if (message['viewOnceMessage']) {
+    const relayInteractiveMessage = async (interactiveType: 'native_flow' | 'list') => {
       const m = generateWAMessageFromContent(sender, message, {
         timestamp: new Date(),
         userJid: this.instance.wuid,
         messageId,
         quoted,
       });
-      const id = await this.client.relayMessage(sender, message, { messageId });
+
+      const relayOptions: any = {
+        messageId: m.key.id,
+        additionalNodes: [
+          {
+            tag: 'biz',
+            attrs: {},
+            content: [{ tag: 'interactive', attrs: { type: interactiveType } }],
+          },
+        ],
+      };
+
+      const id = await this.client.relayMessage(sender, m.message, relayOptions);
       m.key = { id: id, remoteJid: sender, participant: isPnUser(sender) ? sender : undefined, fromMe: true };
+
+      this.logger.verbose(
+        `[interactive-relay] sender=${sender} type=${interactiveType} messageId=${id} hasViewOnce=${Boolean(
+          message['viewOnceMessage'],
+        )}`,
+      );
+
       for (const [key, value] of Object.entries(m)) {
         if (!value || (isArray(value) && value.length) === 0) {
           delete m[key];
         }
       }
+
       return m;
+    };
+
+    if (message['viewOnceMessage']) {
+      return relayInteractiveMessage('native_flow');
+    }
+
+    if (message['listMessage']) {
+      return relayInteractiveMessage('list');
     }
 
     if (
@@ -3315,6 +3343,12 @@ export class BaileysStartupService extends ChannelStartupService {
       throw new BadRequestException('At least one button is required');
     }
 
+    const title = data.title?.trim();
+
+    if (!title) {
+      throw new BadRequestException('Title is required and cannot be empty');
+    }
+
     const hasReplyButtons = data.buttons.some((btn) => btn.type === 'reply');
 
     const hasPixButton = data.buttons.some((btn) => btn.type === 'pix');
@@ -3341,6 +3375,10 @@ export class BaileysStartupService extends ChannelStartupService {
       const message: proto.IMessage = {
         viewOnceMessage: {
           message: {
+            messageContextInfo: {
+              deviceListMetadata: {},
+              deviceListMetadataVersion: 2,
+            },
             interactiveMessage: {
               nativeFlowMessage: {
                 buttons: [{ name: this.mapType.get('pix'), buttonParamsJson: this.toJSONString(data.buttons[0]) }],
@@ -3350,6 +3388,10 @@ export class BaileysStartupService extends ChannelStartupService {
           },
         },
       };
+
+      this.logger.verbose(
+        `[interactive-send] type=buttons number=${data.number} strategy=native_flow pix=true buttons=${data.buttons.length}`,
+      );
 
       return await this.sendMessageWithTyping(data.number, message, {
         delay: data?.delay,
@@ -3373,10 +3415,14 @@ export class BaileysStartupService extends ChannelStartupService {
     const message: proto.IMessage = {
       viewOnceMessage: {
         message: {
+          messageContextInfo: {
+            deviceListMetadata: {},
+            deviceListMetadataVersion: 2,
+          },
           interactiveMessage: {
             body: {
               text: (() => {
-                let t = '*' + data.title + '*';
+                let t = '*' + title + '*';
                 if (data?.description) {
                   t += '\n\n';
                   t += data.description;
@@ -3402,6 +3448,12 @@ export class BaileysStartupService extends ChannelStartupService {
         },
       },
     };
+
+    this.logger.verbose(
+      `[interactive-send] type=buttons number=${data.number} strategy=native_flow pix=false buttons=${data.buttons.length} hasThumbnail=${Boolean(
+        data.thumbnailUrl,
+      )}`,
+    );
 
     return await this.sendMessageWithTyping(data.number, message, {
       delay: data?.delay,
@@ -3434,6 +3486,12 @@ export class BaileysStartupService extends ChannelStartupService {
   }
 
   public async listMessage(data: SendListDto) {
+    this.logger.verbose(
+      `[interactive-send] type=list number=${data.number} sections=${data.sections?.length ?? 0} buttonText=${Boolean(
+        data.buttonText,
+      )}`,
+    );
+
     return await this.sendMessageWithTyping(
       data.number,
       {

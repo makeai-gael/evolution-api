@@ -73,22 +73,29 @@ Route:
 Schema-level fields:
 - `number` (required)
 - `thumbnailUrl` (optional)
-- `title` (optional in schema, but required in DTO/used in service)
+- `title` (required, cannot be empty)
 - `description` (optional)
 - `footer` (optional)
-- `buttons` (array)
+- `buttons` (required array, min 1)
 
 Button item fields:
 - `type`: one of `reply`, `copy`, `url`, `call`, `pix` (required)
 - `displayText`
 - `id`
 - `url`
+- `copyCode`
 - `phoneNumber`
 - `currency`
 - `name`
 - `keyType`: `phone` | `email` | `cpf` | `cnpj` | `random`
 - `key`
-- `copyCode` (used in code for `copy`, defined in DTO)
+
+Conditional required fields by button type:
+- `reply`: `displayText`, `id`
+- `copy`: `displayText`, `copyCode`
+- `url`: `displayText`, `url`
+- `call`: `displayText`, `phoneNumber`
+- `pix`: `currency`, `name`, `keyType`, `key`
 
 Baileys runtime constraints:
 - At least 1 button required.
@@ -98,6 +105,9 @@ Baileys runtime constraints:
 - If any `pix` button exists:
   - only 1 button allowed
   - cannot mix with other types.
+
+Baileys delivery behavior:
+- Buttons are sent through interactive relay with compatibility relay nodes for better cross-client rendering behavior.
 
 Business API behavior:
 - Buttons are mapped as reply buttons (`type: 'reply'`) using `displayText` and `id`.
@@ -112,10 +122,18 @@ Example (reply buttons):
   "footer": "Footer text",
   "buttons": [
     { "type": "reply", "displayText": "Yes", "id": "opt_yes" },
-    { "type": "reply", "displayText": "No", "id": "opt_no" }
+    { "type": "reply", "displayText": "No", "id": "opt_no" },
+    { "type": "reply", "displayText": "Talk to an agent", "id": "opt_agent" }
   ]
 }
 ```
+
+Acceptable reply-button payload checklist:
+- `title` must be present and non-empty
+- `buttons` must contain 1 to 3 items
+- every button must use `type: "reply"`
+- every button must include non-empty `displayText` and `id`
+- do not mix reply buttons with `copy`, `url`, `call`, or `pix`
 
 Example (URL button for Baileys):
 ```json
@@ -157,9 +175,12 @@ Route:
 Required fields (schema):
 - `number`
 - `title`
-- `footerText`
 - `buttonText`
 - `sections`
+
+Optional fields:
+- `description`
+- `footerText`
 
 Section fields:
 - `title` (required)
@@ -202,6 +223,9 @@ Business API notes:
 - Section titles must be unique.
 - Row description is truncated to 72 chars in service.
 - `rowId` is mapped to `id` before send.
+
+Baileys delivery behavior:
+- Lists are relayed through an interactive/list-specific relay path with compatibility nodes for better render consistency.
 
 ## 3) Polls
 
@@ -332,6 +356,7 @@ Provider availability:
 4. For `sendList`:
    - Ensure `sections` and `rows` are non-empty.
    - Ensure each row has stable `rowId`.
+  - `footerText` is optional.
 
 5. Ensure `number` is in expected numeric format string.
 
