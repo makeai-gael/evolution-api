@@ -1649,6 +1649,20 @@ export class BaileysStartupService extends ChannelStartupService {
               this.logger.warn(`Original message not found for update. Skipping. Key: ${JSON.stringify(key)}`);
               continue;
             }
+
+            if (status[update.status] === 'ERROR' && findMessage.messageType === 'listMessage') {
+              console.log(
+                '[list-error-update]',
+                JSON.stringify({
+                  key,
+                  update,
+                  storedMessageId: findMessage.id,
+                  storedMessageType: findMessage.messageType,
+                  storedMessage: findMessage.message,
+                }),
+              );
+            }
+
             message.messageId = findMessage.id;
           }
 
@@ -2164,13 +2178,17 @@ export class BaileysStartupService extends ChannelStartupService {
         quoted,
       });
 
-      const relayOptions: any = { messageId: m.key.id };
+      const relayOptions: any = {};
+
+      if (messageId) {
+        relayOptions.messageId = messageId;
+      }
 
       if (additionalNodes?.length) {
         relayOptions.additionalNodes = additionalNodes;
       }
 
-      const id = await this.client.relayMessage(sender, m.message, relayOptions);
+      const id = await this.client.relayMessage(sender, message, relayOptions);
       m.key = { id: id, remoteJid: sender, participant: isPnUser(sender) ? sender : undefined, fromMe: true };
 
       this.logger.verbose(
@@ -3497,7 +3515,6 @@ export class BaileysStartupService extends ChannelStartupService {
         quoted: data?.quoted,
         mentionsEveryOne: data?.mentionsEveryOne,
         mentioned: data?.mentioned,
-        additionalNodes: this.buildInteractiveRelayNodes('list'),
       } as Options & { additionalNodes: any[] },
     );
   }
@@ -3518,7 +3535,7 @@ export class BaileysStartupService extends ChannelStartupService {
           buttonText: data?.buttonText,
           footerText: data?.footerText,
           sections: data.sections,
-          listType: 2,
+          listType: proto.Message.ListMessage.ListType.SINGLE_SELECT,
         },
       },
       {
@@ -3527,7 +3544,8 @@ export class BaileysStartupService extends ChannelStartupService {
         quoted: data?.quoted,
         mentionsEveryOne: data?.mentionsEveryOne,
         mentioned: data?.mentioned,
-      },
+        additionalNodes: this.buildInteractiveRelayNodes('list'),
+      } as Options & { additionalNodes: any[] },
     );
   }
 
