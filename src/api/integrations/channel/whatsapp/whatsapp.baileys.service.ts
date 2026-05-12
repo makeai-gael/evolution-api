@@ -2136,6 +2136,7 @@ export class BaileysStartupService extends ChannelStartupService {
     messageId?: string,
     ephemeralExpiration?: number,
     contextInfo?: any,
+    additionalNodes?: any[],
     // participants?: GroupParticipant[],
   ) {
     sender = sender.toLowerCase();
@@ -2155,7 +2156,7 @@ export class BaileysStartupService extends ChannelStartupService {
     // NOTE: NÃO DEVEMOS GERAR O messageId AQUI, SOMENTE SE VIER INFORMADO POR PARAMETRO. A GERAÇÃO ANTERIOR IMPEDE O WZAP DE IDENTIFICAR A SOURCE.
     if (messageId) option.messageId = messageId;
 
-    const relayInteractiveMessage = async (interactiveType: 'native_flow' | 'list') => {
+    const relayInteractiveMessage = async () => {
       const m = generateWAMessageFromContent(sender, message, {
         timestamp: new Date(),
         userJid: this.instance.wuid,
@@ -2163,24 +2164,19 @@ export class BaileysStartupService extends ChannelStartupService {
         quoted,
       });
 
-      const relayOptions: any = {
-        messageId: m.key.id,
-        additionalNodes: [
-          {
-            tag: 'biz',
-            attrs: {},
-            content: [{ tag: 'interactive', attrs: { type: interactiveType } }],
-          },
-        ],
-      };
+      const relayOptions: any = { messageId: m.key.id };
+
+      if (additionalNodes?.length) {
+        relayOptions.additionalNodes = additionalNodes;
+      }
 
       const id = await this.client.relayMessage(sender, m.message, relayOptions);
       m.key = { id: id, remoteJid: sender, participant: isPnUser(sender) ? sender : undefined, fromMe: true };
 
       this.logger.verbose(
-        `[interactive-relay] sender=${sender} type=${interactiveType} messageId=${id} hasViewOnce=${Boolean(
-          message['viewOnceMessage'],
-        )}`,
+        `[interactive-relay] sender=${sender} messageId=${id} hasInteractive=${Boolean(
+          message['interactiveMessage'],
+        )} hasList=${Boolean(message['listMessage'])} hasViewOnce=${Boolean(message['viewOnceMessage'])} additionalNodes=${additionalNodes?.length ?? 0}`,
       );
 
       for (const [key, value] of Object.entries(m)) {
@@ -2192,12 +2188,8 @@ export class BaileysStartupService extends ChannelStartupService {
       return m;
     };
 
-    if (message['viewOnceMessage']) {
-      return relayInteractiveMessage('native_flow');
-    }
-
-    if (message['listMessage']) {
-      return relayInteractiveMessage('list');
+    if (message['interactiveMessage'] || message['listMessage'] || message['viewOnceMessage']) {
+      return relayInteractiveMessage();
     }
 
     if (
@@ -2384,6 +2376,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
       let mentions: string[];
       let contextInfo: any;
+      const relayNodes = (options as Options & { additionalNodes?: any[] })?.additionalNodes;
 
       if (isJidGroup(sender)) {
         let group;
@@ -2420,6 +2413,8 @@ export class BaileysStartupService extends ChannelStartupService {
           quoted,
           null,
           group?.ephemeralDuration,
+          undefined,
+          relayNodes,
           // group?.participants,
         );
       } else {
@@ -2443,6 +2438,7 @@ export class BaileysStartupService extends ChannelStartupService {
           null,
           undefined,
           contextInfo,
+          relayNodes,
         );
       }
 
@@ -3283,6 +3279,32 @@ export class BaileysStartupService extends ChannelStartupService {
     return result;
   }
 
+  private buildInteractiveRelayNodes(type: 'native_flow' | 'list') {
+    if (type === 'list') {
+      return [
+        {
+          tag: 'biz',
+          attrs: {},
+          content: [{ tag: 'list', attrs: { type: 'product_list', v: '2' } }],
+        },
+      ];
+    }
+
+    return [
+      {
+        tag: 'biz',
+        attrs: {},
+        content: [
+          {
+            tag: 'interactive',
+            attrs: { type: 'native_flow', v: '1' },
+            content: [{ tag: 'native_flow', attrs: { v: '9', name: 'mixed' } }],
+          },
+        ],
+      },
+    ];
+  }
+
   private toJSONString(button: Button): string {
     const toString = (obj: any) => JSON.stringify(obj);
 
@@ -3373,18 +3395,10 @@ export class BaileysStartupService extends ChannelStartupService {
       }
 
       const message: proto.IMessage = {
-        viewOnceMessage: {
-          message: {
-            messageContextInfo: {
-              deviceListMetadata: {},
-              deviceListMetadataVersion: 2,
-            },
-            interactiveMessage: {
-              nativeFlowMessage: {
-                buttons: [{ name: this.mapType.get('pix'), buttonParamsJson: this.toJSONString(data.buttons[0]) }],
-                messageParamsJson: JSON.stringify({ from: 'api', templateId: v4() }),
-              },
-            },
+        interactiveMessage: {
+          nativeFlowMessage: {
+            buttons: [{ name: this.mapType.get('pix'), buttonParamsJson: this.toJSONString(data.buttons[0]) }],
+            messageParamsJson: JSON.stringify({ from: 'api', templateId: v4() }),
           },
         },
       };
@@ -3393,13 +3407,18 @@ export class BaileysStartupService extends ChannelStartupService {
         `[interactive-send] type=buttons number=${data.number} strategy=native_flow pix=true buttons=${data.buttons.length}`,
       );
 
-      return await this.sendMessageWithTyping(data.number, message, {
-        delay: data?.delay,
-        presence: 'composing',
-        quoted: data?.quoted,
-        mentionsEveryOne: data?.mentionsEveryOne,
-        mentioned: data?.mentioned,
-      });
+      return await this.sendMessageWithTyping(
+        data.number,
+        message,
+        {
+          delay: data?.delay,
+          presence: 'composing',
+          quoted: data?.quoted,
+          mentionsEveryOne: data?.mentionsEveryOne,
+          mentioned: data?.mentioned,
+          additionalNodes: this.buildInteractiveRelayNodes('native_flow'),
+        } as Options & { additionalNodes: any[] },
+      );
     }
 
     const generate = await (async () => {
@@ -3413,38 +3432,30 @@ export class BaileysStartupService extends ChannelStartupService {
     });
 
     const message: proto.IMessage = {
-      viewOnceMessage: {
-        message: {
-          messageContextInfo: {
-            deviceListMetadata: {},
-            deviceListMetadataVersion: 2,
-          },
-          interactiveMessage: {
-            body: {
-              text: (() => {
-                let t = '*' + title + '*';
-                if (data?.description) {
-                  t += '\n\n';
-                  t += data.description;
-                  t += '\n';
-                }
-                return t;
-              })(),
-            },
-            footer: { text: data?.footer },
-            header: (() => {
-              if (generate?.message?.imageMessage) {
-                return {
-                  hasMediaAttachment: !!generate.message.imageMessage,
-                  imageMessage: generate.message.imageMessage,
-                };
-              }
-            })(),
-            nativeFlowMessage: {
-              buttons: buttons,
-              messageParamsJson: JSON.stringify({ from: 'api', templateId: v4() }),
-            },
-          },
+      interactiveMessage: {
+        body: {
+          text: (() => {
+            let t = '*' + title + '*';
+            if (data?.description) {
+              t += '\n\n';
+              t += data.description;
+              t += '\n';
+            }
+            return t;
+          })(),
+        },
+        footer: { text: data?.footer },
+        header: (() => {
+          if (generate?.message?.imageMessage) {
+            return {
+              hasMediaAttachment: !!generate.message.imageMessage,
+              imageMessage: generate.message.imageMessage,
+            };
+          }
+        })(),
+        nativeFlowMessage: {
+          buttons: buttons,
+          messageParamsJson: JSON.stringify({ from: 'api', templateId: v4() }),
         },
       },
     };
@@ -3455,13 +3466,18 @@ export class BaileysStartupService extends ChannelStartupService {
       )}`,
     );
 
-    return await this.sendMessageWithTyping(data.number, message, {
-      delay: data?.delay,
-      presence: 'composing',
-      quoted: data?.quoted,
-      mentionsEveryOne: data?.mentionsEveryOne,
-      mentioned: data?.mentioned,
-    });
+    return await this.sendMessageWithTyping(
+      data.number,
+      message,
+      {
+        delay: data?.delay,
+        presence: 'composing',
+        quoted: data?.quoted,
+        mentionsEveryOne: data?.mentionsEveryOne,
+        mentioned: data?.mentioned,
+        additionalNodes: this.buildInteractiveRelayNodes('native_flow'),
+      } as Options & { additionalNodes: any[] },
+    );
   }
 
   public async locationMessage(data: SendLocationDto) {
@@ -3481,7 +3497,8 @@ export class BaileysStartupService extends ChannelStartupService {
         quoted: data?.quoted,
         mentionsEveryOne: data?.mentionsEveryOne,
         mentioned: data?.mentioned,
-      },
+        additionalNodes: this.buildInteractiveRelayNodes('list'),
+      } as Options & { additionalNodes: any[] },
     );
   }
 

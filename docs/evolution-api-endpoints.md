@@ -346,7 +346,7 @@ Where each section includes:
 Where each row includes:
 
 - `title: string`
-- `description: string`
+- `description?: string`
 - `rowId: string`
 
 ### `POST /message/sendButtons/:instanceName`
